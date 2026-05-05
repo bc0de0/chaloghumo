@@ -9,18 +9,23 @@ router = APIRouter()
 @router.post("/", response_model=Recommendation)
 def create_recommendation(
     *,
-    persona_in: UserPersona,
+    rec_in: RecommendationCreate,
 ) -> Any:
     """
-    Generate a new recommendation based on User Persona.
+    Generate a new recommendation based on User Persona and Context.
     """
     # TODO: Implement Reasoning Engine Logic
-    # 1. Ingest Signals
-    # 2. Vector Search (Qdrant)
-    # 3. LLM Synthesis
+    # 1. Ingest Signals (Weather, Crowds)
+    # 2. Vector Search (Qdrant) for destinations matching Persona
+    # 3. LLM Synthesis (Gemini) to create the reasoning_chain
     return {
-        "destination_id": "uuid-placeholder",
-        "match_score": 0.95,
-        "reasoning_chain": ["Based on your preference for quiet...", "Weather is perfect..."],
-        "context_snapshot": {}
+        "id": "rec-placeholder",
+        "destination_id": "d-1",
+        "match_score": 0.98,
+        "reasoning_chain": [
+            "Matches your interest in Hiking.",
+            "Weather is currently clear and 22°C.",
+            "Crowd levels are low for this season."
+        ],
+        "context_snapshot": {"weather": "clear", "crowds": "low"}
     }
