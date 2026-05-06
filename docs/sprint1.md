@@ -13,8 +13,8 @@ Establish the core infrastructure and implement a minimum viable "Understanding 
 ### 1. Infrastructure & Data Layer
 
 - [x] **Database Schema & Migrations**: Implement SQLAlchemy models for `Destination` and `User` based on the [System Ontology](./ontology.md). Set up Alembic for migrations.
-- [ ] **Vector Store Setup**: Initialize Qdrant collections with appropriate indexing for semantic search on destination "vibes".
-- [ ] **Initial Data Seeding**: Create a Python script to populate PostgreSQL and Qdrant with an initial set of 20+ diverse destinations, including metadata and base embeddings.
+- [x] **Vector Store Setup**: Initialize Qdrant collections with appropriate indexing for semantic search on destination "vibes".
+- [x] **Initial Data Seeding**: Create a Python script to populate PostgreSQL and Qdrant with an initial set of 20+ diverse destinations, including metadata and base embeddings.
 
 ### 2. Core Service Implementation
 
