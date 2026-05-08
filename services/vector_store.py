@@ -33,8 +33,8 @@ class VectorService:
                     distance=models.Distance.COSINE
                 ),
                 hnsw_config=models.HnswConfigDiff(
-                    m=16,
-                    ef_construct=100,
+                    m=32,
+                    ef_construct=128,
                     full_scan_threshold=10000
                 )
             )
@@ -98,6 +98,7 @@ class VectorService:
             print(f"Error searching Qdrant: {e}")
             return []
 
+
     async def get_destination_vector(self, destination_id: str) -> Optional[List[float]]:
         """
         Retrieve the high-dimensional vector for a specific destination.
@@ -108,8 +109,10 @@ class VectorService:
                 ids=[destination_id],
                 with_vectors=True
             )
-            if result:
-                return result[0].vector
+            if result and result[0].vector is not None:
+                vector = result[0].vector
+                if isinstance(vector, list):
+                    return vector # type: ignore
             return None
         except Exception as e:
             print(f"Error retrieving from Qdrant: {e}")

@@ -19,11 +19,11 @@ class ReasoningEngine:
         """
         Orchestrate the V1 Baseline Recommendation Flow.
         """
-        # 1. Pruning: Filter candidates via SQL based on Hard Constraints
-        candidate_pool = await self._prune_candidates(persona)
+        # 1. Extraction: Parse constraints from the persona
+        filters = self._parse_constraints(persona)
         
-        # 2. Semantic Alignment: Rank candidates via Qdrant based on Mood/Vibe
-        ranked_candidates = await self._align_semantics(persona, candidate_pool)
+        # 2. Semantic Alignment: Rank candidates via Qdrant based on Mood/Vibe + Filters
+        ranked_candidates = await self._align_semantics(persona, filters)
         
         # 3. Contextual Weighting: Incorporate real-time signals
         weighted_candidates = await self._apply_contextual_weights(ranked_candidates)
@@ -34,47 +34,65 @@ class ReasoningEngine:
         if not top_destination:
             return self._empty_response()
 
-        # Fetch latest signals for the top destination to provide context to LLM
-        env_state = await self.signals.get_environmental_state(top_destination["id"])
-        soc_state = await self.signals.get_societal_state(top_destination["id"])
+        # Extract data from payload
+        payload = top_destination.get("payload", {})
+        dest_name = payload.get("name", "Unknown")
+        dest_id = top_destination.get("id")
+
+        # Fetch latest signals for the top destination
+        env_state = await self.signals.get_environmental_state(dest_id)
+        soc_state = await self.signals.get_societal_state(dest_id)
+        travel_state = await self.signals.get_travel_availability(dest_id, iata=payload.get("iata"))
 
         reasoning_chain = await self.llm.generate_reasoning_chain(
-            persona_context=persona.dict(),
-            destination_context=top_destination,
+            persona_context=persona.model_dump(),
+            destination_context=payload,
             environmental_signals=env_state or {},
-            societal_signals=soc_state or {}
         )
 
         return {
-            "destination_id": top_destination.get("id", "unknown"),
-            "match_score": top_destination.get("score", 0.0),
+            "destination_id": dest_id,
+            "destination_name": dest_name,
+            "match_score": round(top_destination.get("score", 0.0), 4),
             "reasoning_chain": reasoning_chain,
+            "travel_availability": travel_state,
             "context_snapshot": {
-                "persona": persona.dict(),
+                "persona": persona.model_dump(),
                 "environment": env_state or {},
-                "societal": soc_state or {}
+                "societal": soc_state or {},
+                "events": soc_state.get("events", []) if soc_state else []
             }
         }
 
-    async def _prune_candidates(self, persona: UserPersona) -> List[Dict[str, Any]]:
+    def _parse_constraints(self, persona: UserPersona) -> Dict[str, Any]:
         """
-        Logic for SQL-based filtering of hard constraints.
+        Parse string-based constraints into Qdrant filter structure.
+        Example: ["budget: Luxury", "climate: Tropical"]
         """
-        # Placeholder for DB query logic
-        return []
+        must_filters = []
+        for constraint in persona.constraints:
+            if ":" in constraint:
+                key, value = [s.strip() for s in constraint.split(":", 1)]
+                if key == "budget":
+                    must_filters.append({"key": "budget_level", "match": {"value": value}})
+                elif key == "climate":
+                    must_filters.append({"key": "climate_type", "match": {"value": value}})
+        
+        return {"must": must_filters} if must_filters else {}
 
-    async def _align_semantics(self, persona: UserPersona, pool: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    async def _align_semantics(self, persona: UserPersona, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        Logic for Vector-based similarity search and ranking.
+        Logic for Vector-based similarity search with hard filters.
         """
         # Convert the user's mood/vibe into a vector
         query_vector = await self.llm.generate_embedding(persona.mood or "travel")
         
-        # Search the vector store
-        # If pool is empty, we search the entire collection. 
-        # If pool has candidates from _prune_candidates, we should ideally use them as filters,
-        # but for now, we'll perform a standard search.
-        results = await self.vector_store.search_by_vibe(query_vector=query_vector, limit=10)
+        # Search the vector store with filters
+        results = await self.vector_store.search_by_vibe(
+            query_vector=query_vector, 
+            limit=10,
+            filters=filters
+        )
         
         return results
 

@@ -1,3 +1,4 @@
+from fastapi import APIRouter
 from api.v1.endpoints import recommendations, health
 
 api_router = APIRouter()

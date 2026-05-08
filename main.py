@@ -4,11 +4,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.v1.api import api_router
 from core.config import settings
 
+from core.middleware import RateLimitMiddleware
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
 )
+
+# Apply Rate Limiting
+app.add_middleware(RateLimitMiddleware, limit=10, window=60)
 
 # Set all CORS enabled origins
 if settings.BACKEND_CORS_ORIGINS:

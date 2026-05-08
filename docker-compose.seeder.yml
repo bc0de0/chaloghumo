@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  seeder:
+    build: .
+    command: python scripts/seed_production.py
+    env_file:
+      - .env
+    environment:
+      - POSTGRES_SERVER=db
+      - QDRANT_HOST=qdrant
+      - REDIS_HOST=redis
+    depends_on:
+      db:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    networks:
+      - chaloghumo_net
+
+networks:
+  chaloghumo_net:
+    external: true

@@ -96,10 +96,24 @@ class LLMService:
             data = json.loads(clean_text)
             # Basic validation: ensure it's a list
             if isinstance(data, list):
-                return data
+                return self._sanitize_output(data)
             return []
         except Exception:
             return []
+
+    def _sanitize_output(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Sanitize AI-generated content to prevent prompt leakage or dangerous instructions.
+        """
+        forbidden_keywords = ["System Prompt", "Internal Logic", "Ignore previous", "Override"]
+        for entry in data:
+            if isinstance(entry, dict):
+                logic = entry.get("logic", "")
+                for keyword in forbidden_keywords:
+                    if keyword.lower() in logic.lower():
+                        entry["logic"] = "[REDACTED: Security Policy Violation]"
+        return data
+
 
     async def parse_mood_intent(self, mood_text: str) -> Dict[str, Any]:
         """

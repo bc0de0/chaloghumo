@@ -5,6 +5,7 @@ from core.config import settings
 from services.external_apis.weather import weather_client
 from services.external_apis.safety import safety_client
 from services.external_apis.events import events_client
+from services.external_apis.travel import travel_client
 
 class SignalService:
     """
@@ -59,5 +60,16 @@ class SignalService:
         }
         await self.redis.set(f"signal:soc:{destination_id}", json.dumps(soc_data), ex=3600)
 
+    async def get_travel_availability(self, destination_id: str, iata: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Check flight and hotel availability for a destination.
+        """
+        # In a real app, iata would be fetched from Postgres metadata if not provided
+        flights = await travel_client.get_flight_availability(iata or "Unknown")
+        hotels = await travel_client.get_hotel_baseline("Unknown")
+        return {
+            "flights": flights,
+            "hotels": hotels
+        }
 
 signal_service = SignalService()

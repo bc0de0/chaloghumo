@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     # External APIs
     OPENWEATHER_API_KEY: str = ""
     AMADEUS_API_KEY: str = ""
+    TICKETMASTER_API_KEY: str = ""
+    PREDICTHQ_API_KEY: str = ""
     GDELT_API_KEY: str = ""
 
     class Config:
