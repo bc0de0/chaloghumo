@@ -3,7 +3,7 @@ version: '3.8'
 services:
   seeder:
     build: .
-    command: python scripts/seed_production.py
+    command: python scripts/seed.py
     env_file:
       - .env
     environment:

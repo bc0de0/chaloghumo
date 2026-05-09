@@ -1,130 +1,235 @@
-from typing import Any, List, Dict
+from typing import Any, List, Dict, Optional
+import json
 from schemas.persona import UserPersona
 from services.vector_store import vector_service
-from services.llm import llm_service
+from services.llm import intelligence_service
 from services.signals import signal_service
+from services.external_apis.snowflake import snowflake_service
+from services.query_builder import query_builder
+from services.postgres import postgres_service
 
-class ReasoningEngine:
+class TriageRouter:
     """
-    The core synthesis engine for ChaloGhumo.
-    Orchestrates the multi-domain recommendation flow.
+    Stage 1: The Analyst (Qwen-2 1.5B).
+    Responsible for query expansion and signal selection.
     """
     
     def __init__(self):
+        self.model = "arize-ai/qwen-2-1.5b-instruct"
+
+    async def analyze_intent(self, persona: UserPersona) -> Dict[str, Any]:
+        """
+        Expands the user's mood into a structured search plan.
+        """
+        prompt = f"""
+        [INST]
+        As the ChaloGhumo Triage Router, analyze this traveler's persona and mood.
+        Persona: {persona.model_dump_json()}
+
+        Tasks:
+        1. Expand the 'mood' into 3 semantic search terms for a vector database.
+        2. Identify key constraints (budget, climate, etc.).
+        3. Decide if 'Weather' or 'Events' signals are critical for this specific intent (True/False).
+
+        Return ONLY a JSON object (ensure booleans are lowercase true/false):
+        {{
+            "search_terms": ["term1", "term2", "term3"],
+            "constraints": {{"key": "value"}},
+            "signal_requirements": {{"weather": true, "events": false, "flights": true}}
+        }}
+        [/INST]
+        """
+        
+        response = await intelligence_service.get_reasoning(
+            model=self.model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1 # Low temperature for structural reliability
+        )
+        
+        if not response:
+            return {
+                "search_terms": [persona.mood or "travel"],
+                "constraints": {},
+                "signal_requirements": {"weather": True, "events": True, "flights": True}
+            }
+            
+        try:
+            return intelligence_service.parse_json_output(response)
+        except Exception:
+            # Fallback if LLM fails
+            return {
+                "search_terms": [persona.mood or "travel"],
+                "constraints": {},
+                "signal_requirements": {"weather": True, "events": True, "flights": True}
+            }
+
+class ReasoningEngine:
+    """
+    The High-Performance RAG Orchestrator for ChaloGhumo.
+    Transitions from linear execution to a multi-stage cognitive pipeline.
+    """
+    
+    def __init__(self):
+        self.router = TriageRouter()
         self.vector_store = vector_service
-        self.llm = llm_service
+        self.llm = intelligence_service
         self.signals = signal_service
+        self.snowflake = snowflake_service
+        self.synthesis_model = "meta-llama/Llama-3-70b-chat-hf"
 
     async def generate_recommendation(self, persona: UserPersona) -> Dict[str, Any]:
         """
-        Orchestrate the V1 Baseline Recommendation Flow.
+        Orchestrate the Sprint 4 Parallel RAG Flow:
+        Triage -> Sovereign Query Expansion -> Parallel Retrieval -> Cognitive Synthesis.
         """
-        # 1. Extraction: Parse constraints from the persona
-        filters = self._parse_constraints(persona)
+        # 1. Triage Stage (Qwen-2 1.5B)
+        intent_plan = await self.router.analyze_intent(persona)
+        self._log_session_output(persona, intent_plan)
         
-        # 2. Semantic Alignment: Rank candidates via Qdrant based on Mood/Vibe + Filters
-        ranked_candidates = await self._align_semantics(persona, filters)
+        # 2. Sovereign Query Expansion (Gemma-3 4B)
+        query_strategy = await query_builder.synthesize_queries(intent_plan)
         
-        # 3. Contextual Weighting: Incorporate real-time signals
-        weighted_candidates = await self._apply_contextual_weights(ranked_candidates)
+        # 3. Parallel Retrieval Burst (Postgres + Qdrant + Signals)
+        # Execute all retrieval tasks simultaneously for sub-2s latency
+        search_query = query_strategy["qdrant_params"].get("search_text", "travel")
+        query_vector = await self.llm.generate_embedding(search_query)
         
-        # 4. Synthesis: Generate final narrative via Gemini
-        top_destination = weighted_candidates[0] if weighted_candidates else None
+        burst_tasks = [
+            postgres_service.fetch_candidate_ids(query_strategy["postgres_sql"]),
+            self.vector_store.search_by_vibe(
+                query_vector=query_vector,
+                limit=10,
+                filters=query_strategy["qdrant_params"].get("filters", {})
+            ),
+            self._fetch_context_bundle_from_specs(query_strategy["api_specs"])
+        ]
         
-        if not top_destination:
+        postgres_ids, qdrant_results, signal_context = await asyncio.gather(*burst_tasks)
+        
+        # 4. Context Merging & Ranking
+        # Filter Qdrant results by Postgres hard constraints if necessary
+        final_candidates = self._merge_and_rank_candidates(qdrant_results, postgres_ids)
+        
+        if not final_candidates:
             return self._empty_response()
 
-        # Extract data from payload
-        payload = top_destination.get("payload", {})
-        dest_name = payload.get("name", "Unknown")
+        top_destination = final_candidates[0]
+        dest_payload = top_destination.get("payload", {})
         dest_id = top_destination.get("id")
-
-        # Fetch latest signals for the top destination
-        env_state = await self.signals.get_environmental_state(dest_id)
-        soc_state = await self.signals.get_societal_state(dest_id)
-        travel_state = await self.signals.get_travel_availability(dest_id, iata=payload.get("iata"))
-
-        reasoning_chain = await self.llm.generate_reasoning_chain(
-            persona_context=persona.model_dump(),
-            destination_context=payload,
-            environmental_signals=env_state or {},
-        )
+        
+        # 5. Cognitive Synthesis Stage (Llama 3 70B)
+        # Combine retrieved data with real-time signals
+        synthesis_context = {**signal_context, "historical": await self.snowflake.validate_destination_trend(dest_id, search_query)}
+        reasoning_chain = await self._generate_synthesis(persona, dest_payload, synthesis_context)
 
         return {
             "destination_id": dest_id,
-            "destination_name": dest_name,
+            "destination_name": dest_payload.get("name", "Unknown"),
             "match_score": round(top_destination.get("score", 0.0), 4),
             "reasoning_chain": reasoning_chain,
-            "travel_availability": travel_state,
+            "travel_availability": synthesis_context.get("flights"),
             "context_snapshot": {
                 "persona": persona.model_dump(),
-                "environment": env_state or {},
-                "societal": soc_state or {},
-                "events": soc_state.get("events", []) if soc_state else []
+                "query_strategy": query_strategy,
+                "signals": synthesis_context
             }
         }
 
-    def _parse_constraints(self, persona: UserPersona) -> Dict[str, Any]:
+    async def _fetch_context_bundle_from_specs(self, specs: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Parse string-based constraints into Qdrant filter structure.
-        Example: ["budget: Luxury", "climate: Tropical"]
+        Dynamically fetches signals based on the Query Builder's specifications.
         """
-        must_filters = []
-        for constraint in persona.constraints:
-            if ":" in constraint:
-                key, value = [s.strip() for s in constraint.split(":", 1)]
-                if key == "budget":
-                    must_filters.append({"key": "budget_level", "match": {"value": value}})
-                elif key == "climate":
-                    must_filters.append({"key": "climate_type", "match": {"value": value}})
+        tasks = []
+        # In a full impl, we'd use the 'params' from specs
+        tasks.append(self.signals.get_environmental_state("STUB"))
+        tasks.append(self.signals.get_societal_state("STUB"))
+        tasks.append(self.signals.get_travel_availability("STUB"))
         
-        return {"must": must_filters} if must_filters else {}
+        results = await asyncio.gather(*tasks)
+        return {
+            "environment": results[0],
+            "societal": results[1],
+            "flights": results[2]
+        }
 
-    async def _align_semantics(self, persona: UserPersona, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _merge_and_rank_candidates(self, qdrant_hits: List[Dict[str, Any]], postgres_ids: List[Any]) -> List[Dict[str, Any]]:
         """
-        Logic for Vector-based similarity search with hard filters.
+        Intersects semantic results with relational hard constraints.
         """
-        # Convert the user's mood/vibe into a vector
-        query_vector = await self.llm.generate_embedding(persona.mood or "travel")
+        if not postgres_ids:
+            return qdrant_hits
+            
+        str_postgres_ids = [str(pid) for pid in postgres_ids]
+        return [hit for hit in qdrant_hits if str(hit.get("id")) in str_postgres_ids] or qdrant_hits
+
+
+    async def _generate_synthesis(self, persona: UserPersona, dest: dict, context: dict) -> List[Dict[str, Any]]:
+        """
+        The final "Poetic Synthesis" using Llama 3 70B.
+        """
+        prompt = f"""
+        <SYSTEM>
+        You are the ChaloGhumo Synthesis Engine. Your goal is to explain why a destination is a perfect match for a traveler.
+        Use a premium, expert, and slightly poetic tone. Cite specific signals (weather, historical trends, events).
+        </SYSTEM>
+
+        <CONTEXT>
+        Traveler: {persona.model_dump_json()}
+        Destination: {json.dumps(dest)}
+        Retrieved Data: {json.dumps(context)}
+        </CONTEXT>
+
+        Return a JSON array of reasoning steps. Each step MUST have:
+        - step_id: int
+        - logic: string (The expert explanation)
+        - domain: [Persona, Environmental, Societal, Historical]
+        - impact_weight: float (-1.0 to 1.0)
+        """
         
-        # Search the vector store with filters
-        results = await self.vector_store.search_by_vibe(
-            query_vector=query_vector, 
-            limit=10,
-            filters=filters
+        response = await self.llm.get_reasoning(
+            model=self.synthesis_model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7
         )
         
-        return results
+        if not response:
+            return [{"step_id": 1, "logic": "Destination aligns with your unique vibe.", "domain": "Persona", "impact_weight": 0.5}]
 
-    async def _apply_contextual_weights(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        Logic for adjusting scores based on real-time Environmental/Societal signals.
-        Implements 'Environmental Determinism' by penalizing unsafe or incompatible states.
-        """
-        for cand in candidates:
-            env = await self.signals.get_environmental_state(cand["id"])
-            if env and env.get("conditions") == "Extreme":
-                cand["score"] *= 0.1 # Severe penalty for safety invariant violation
-            
-            soc = await self.signals.get_societal_state(cand["id"])
-            if soc and soc.get("crowd_density", 0) > 0.8:
-                cand["score"] *= 0.7 # Penalty for high crowding (Crowding Paradox)
-                
-        return sorted(candidates, key=lambda x: x["score"], reverse=True)
+        try:
+            return self.llm.parse_json_output(response)
+        except:
+            return [{"step_id": 1, "logic": "Destination aligns with your unique vibe.", "domain": "Persona", "impact_weight": 0.5}]
+
 
     def _empty_response(self) -> Dict[str, Any]:
         return {
             "destination_id": "no-match",
             "match_score": 0.0,
-            "reasoning_chain": [
-                {
-                    "step_id": 1,
-                    "logic": "Unable to find a destination matching your constraints.",
-                    "domain": "System",
-                    "impact_weight": 0.0
-                }
-            ],
+            "reasoning_chain": [{"step_id": 1, "logic": "No destinations found.", "domain": "System", "impact_weight": 0.0}],
             "context_snapshot": {}
         }
+
+    def _log_session_output(self, persona: UserPersona, intent: Dict[str, Any]):
+        """
+        Persists the triage and persona state to a session file for audit/debugging.
+        """
+        import os
+        import time
+        from datetime import datetime
+        
+        session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{int(time.time())}"
+        log_path = f"logs/sessions/{session_id}.json"
+        
+        os.makedirs("logs/sessions", exist_ok=True)
+        
+        output = {
+            "timestamp": datetime.now().isoformat(),
+            "persona": persona.model_dump(),
+            "intent_plan": intent
+        }
+        
+        with open(log_path, "w") as f:
+            json.dump(output, f, indent=2)
+        print(f"Session output saved to {log_path}")
 
 reasoning_engine = ReasoningEngine()

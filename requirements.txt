@@ -11,3 +11,5 @@ sentence-transformers>=2.2.0
 python-dotenv>=1.0.0
 alembic>=1.11.0
 httpx>=0.24.0
+together>=0.2.0
+snowflake-connector-python>=3.0.0

@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
     
     # AI
-    GOOGLE_API_KEY: str = ""
+    TOGETHER_API_KEY: str = ""
     
     # External APIs
     OPENWEATHER_API_KEY: str = ""
@@ -44,6 +44,14 @@ class Settings(BaseSettings):
     TICKETMASTER_API_KEY: str = ""
     PREDICTHQ_API_KEY: str = ""
     GDELT_API_KEY: str = ""
+    
+    # Snowflake
+    SNOWFLAKE_ACCOUNT: str = ""
+    SNOWFLAKE_USER: str = ""
+    SNOWFLAKE_PASSWORD: str = ""
+    SNOWFLAKE_DATABASE: str = ""
+    SNOWFLAKE_SCHEMA: str = ""
+    SNOWFLAKE_WAREHOUSE: str = ""
 
     class Config:
         case_sensitive = True

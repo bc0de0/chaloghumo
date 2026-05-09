@@ -1,7 +1,7 @@
 import asyncio
 import uuid
 from services.vector_store import vector_service
-from services.llm import llm_service
+from services.llm import intelligence_service
 
 MINIMAL_CITIES = [
     {
@@ -48,7 +48,7 @@ async def seed_minimal_data():
             city_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, city_str_id))
             
             try:
-                embedding = await llm_service.generate_embedding(city['vibe_description'])
+                embedding = await intelligence_service.generate_embedding(city['vibe_description'])
                 print(f"DEBUG: Embedding for {city['name']} generated.", flush=True)
             except Exception as e:
                 print(f"DEBUG: Embedding for {city['name']} failed: {e}", flush=True)

@@ -18,7 +18,7 @@ async def create_recommendation(
     This endpoint orchestrates the multi-domain reasoning flow:
     1. Prunes candidates using objective constraints.
     2. Aligns semantic 'vibes' via vector similarity.
-    3. Synthesizes a natural language ReasoningChain using Gemini 1.5 Pro.
+    3. Synthesizes a natural language ReasoningChain using Together AI (Llama 3 70B).
     """
     try:
         recommendation = await reasoning_engine.generate_recommendation(persona_in)

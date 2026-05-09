@@ -1,124 +1,112 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import json
+import asyncio
+from functools import partial
 from sentence_transformers import SentenceTransformer
 from core.config import settings
 
-class LLMService:
+class IntelligenceService:
     """
-    Service for semantic processing.
-    Uses SentenceTransformers for local embeddings and Gemini for reasoning.
+    Core Intelligence Service for ChaloGhumo.
+    Powered exclusively by Together AI for reasoning and SentenceTransformers for local vibes.
     """
+    embedding_model: SentenceTransformer
+    together_client: Optional[Any] = None
 
     def __init__(self):
-        # Local Embedding Model (384-D)
-        # Using a small, efficient model suitable for travel vibes
+        # 1. Local Embedding Engine (all-MiniLM-L6-v2)
+        # Optimized for travel 'vibes' and sub-100ms latency.
         self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
         
-        # Reasoning Model (Gemini via API)
-        # We keep this as an option for narrative synthesis
+        # 2. Together AI Client Initialization
+        self._initialize_together()
+
+    def _initialize_together(self):
         try:
-            import google.generativeai as genai
-            if settings.GOOGLE_API_KEY and settings.GOOGLE_API_KEY != "your_api_key_here":
-                genai.configure(api_key=settings.GOOGLE_API_KEY)
-                self.genai_client = genai
-                self.reasoning_model = "gemini-1.5-pro"
-            else:
-                self.genai_client = None
+            from together import Together
+            if settings.TOGETHER_API_KEY and settings.TOGETHER_API_KEY != "your_together_api_key_here":
+                self.together_client = Together(api_key=settings.TOGETHER_API_KEY)
         except ImportError:
-            self.genai_client = None
+            print("Warning: 'together' library not found.")
 
     async def generate_embedding(self, text: str) -> List[float]:
         """
-        Convert a natural language string into a 384-D vector using all-MiniLM-L6-v2.
-        Runs locally without API calls.
+        Convert text into a 384-D vector locally.
         """
         try:
-            # sentence-transformers encode is synchronous
+            # Synchronous call wrapped for async safety
             embedding = self.embedding_model.encode(text)
             return embedding.tolist()
         except Exception as e:
-            print(f"Error generating embedding: {e}")
+            print(f"Embedding Error: {e}")
             return [0.0] * 384
 
-    async def generate_reasoning_chain(
+    async def get_reasoning(
         self, 
-        persona_context: Dict[str, Any], 
-        destination_context: Dict[str, Any],
-        environmental_signals: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        model: str, 
+        messages: List[Dict[str, str]], 
+        max_tokens: int = 1024, 
+        temperature: float = 0.7,
+        stream: bool = False
+    ) -> Optional[str]:
         """
-        Synthesize the final 'ReasoningChain' as a list of structured steps.
-        Uses prompt engineering to force JSON output from the LLM.
+        Primary inference method for Together AI models (Mixtral/Llama 3).
         """
-        prompt = self._build_reasoning_prompt(persona_context, destination_context, environmental_signals)
-        
-        if self.genai_client:
-            try:
-                model = self.genai_client.GenerativeModel(self.reasoning_model)
-                response = await model.generate_content_async(prompt)
-                return self._parse_structured_output(response.text)
-            except Exception as e:
-                print(f"LLM Synthesis Error: {e}")
-        
-        # Heuristic fallback if LLM fails or is unavailable
-        return [
-            {
-                "step_id": 1,
-                "logic": f"Destination {destination_context.get('id')} aligns with your vibe.",
-                "domain": "Persona",
-                "impact_weight": 0.3
-            }
-        ]
+        if not self.together_client:
+            return None
 
-    def _build_reasoning_prompt(self, persona: dict, dest: dict, signals: dict) -> str:
-        return f"""
-        Analyze the match between this user persona and destination.
-        User: {json.dumps(persona)}
-        Destination: {json.dumps(dest)}
-        Signals: {json.dumps(signals)}
-
-        Return a JSON array of reasoning steps. Each step must have:
-        - step_id: integer
-        - logic: string
-        - domain: one of [Persona, Environmental, Societal]
-        - impact_weight: float between -1.0 and 1.0
-
-        OUTPUT ONLY VALID JSON.
-        """
-
-    def _parse_structured_output(self, text: str) -> List[Dict[str, Any]]:
-        """
-        Extract and validate JSON from raw LLM text.
-        """
         try:
-            # Clean up potential markdown formatting
-            clean_text = text.replace("```json", "").replace("```", "").strip()
-            data = json.loads(clean_text)
-            # Basic validation: ensure it's a list
-            if isinstance(data, list):
-                return self._sanitize_output(data)
-            return []
-        except Exception:
-            return []
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                partial(
+                    self.together_client.chat.completions.create,
+                    model=model,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    stream=stream
+                )
+            )
+            
+            if stream:
+                return response
+            return response.choices[0].message.content
+        except Exception as e:
+            print(f"Together AI Error: {e}")
+            return None
 
-    def _sanitize_output(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def parse_json_output(self, text: str) -> Any:
         """
-        Sanitize AI-generated content to prevent prompt leakage or dangerous instructions.
+        Safely extract and sanitize JSON from model outputs.
         """
-        forbidden_keywords = ["System Prompt", "Internal Logic", "Ignore previous", "Override"]
-        for entry in data:
-            if isinstance(entry, dict):
-                logic = entry.get("logic", "")
-                for keyword in forbidden_keywords:
-                    if keyword.lower() in logic.lower():
-                        entry["logic"] = "[REDACTED: Security Policy Violation]"
+        if not text:
+            return None
+        try:
+            clean_text = text.replace("```json", "").replace("```", "").strip()
+            # Handle Python-style booleans if the model slips up
+            clean_text = clean_text.replace(": True", ": true").replace(": False", ": false")
+            data = json.loads(clean_text)
+            return self._sanitize(data)
+        except Exception as e:
+            print(f"JSON Parsing Error: {e}")
+            return None
+
+    def _sanitize(self, data: Any) -> Any:
+        """
+        Filter for potential prompt injection or logic leakage.
+        """
+        forbidden = ["System Prompt", "Ignore previous", "Override"]
+        if isinstance(data, list):
+            return [self._sanitize(item) for item in data]
+        elif isinstance(data, dict):
+            return {k: self._sanitize(v) for k, v in data.items()}
+        elif isinstance(data, str):
+            for word in forbidden:
+                if word.lower() in data.lower():
+                    return "[REDACTED]"
+            return data
         return data
 
-
-    async def parse_mood_intent(self, mood_text: str) -> Dict[str, Any]:
-        """
-        Analyze raw user mood strings.
-        """
-        return {"mood": mood_text}
-
-llm_service = LLMService()
+# Singleton Instance
+intelligence_service = IntelligenceService()
