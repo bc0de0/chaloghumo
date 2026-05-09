@@ -97,30 +97,57 @@ Draw the data flow *first*, service boundaries *second*. The shape of your archi
 
 A generalised RAG agentic data flow has this shape:
 
-```text
-[User Intent / Input]
-        │
-        ▼
-[Intent Understanding Layer]     ← Small, fast model; structured output
-        │ Query expansion, constraint extraction, tool selection
-        ▼
-[Query Synthesis Layer]          ← Translates intent into DB-specific queries
-        │ SQL, vector filter specs, API call specs
-        ▼
-[Parallel Retrieval Layer]       ← asyncio.gather() — all sources simultaneously
-        ├── Relational DB (hard constraints, metadata)
-        ├── Vector DB (semantic similarity)
-        ├── Signal Cache (recent live data)
-        └── Analytics/Historical (trend validation)
-        │
-        ▼
-[Merge & Rank Layer]             ← Intersection logic, score normalisation
-        │
-        ▼
-[Synthesis Layer]                ← Large, capable model; natural language output
-        │ Reasoning chain, narrative, explanation
-        ▼
-[Structured Response]
+```mermaid
+graph TD
+    subgraph "Interface Layer"
+        User[Traveler]
+        API[FastAPI Endpoints]
+    end
+
+    subgraph "Reasoning Engine (Orchestrator)"
+        RE[ReasoningEngine]
+        TR[TriageRouter]
+        QB[QueryBuilder]
+        SE[SynthesisEngine]
+    end
+
+    subgraph "Retrieval Layer (The Flash Burst)"
+        PG[Postgres: Metadata]
+        QS[Qdrant: Vector Store]
+        SF[Snowflake: History]
+        EXT[External APIs]
+    end
+
+    subgraph "Intelligence Providers"
+        Together[Together AI: Llama 3 / Gemma 3 / Qwen 2]
+    end
+
+    subgraph "Persistence & Cache"
+        Redis[Redis: Signal Cache]
+        S3[S3: Bronze Landing Zone]
+    end
+
+    %% Relationships
+    User -->|Mood Input| API
+    API -->|Persona| RE
+    
+    RE -->|Stage 1: Triage| TR
+    TR -->|Plan| Together
+    
+    RE -->|Stage 2: Expand| QB
+    QB -->|Queries| Together
+    
+    RE -->|Stage 3: Burst Retrieval| PG
+    RE -->|Stage 3: Burst Retrieval| QS
+    RE -->|Stage 3: Burst Retrieval| SF
+    RE -->|Stage 3: Burst Retrieval| EXT
+    
+    EXT <--> Redis
+    RE -->|Log Session| S3
+    
+    RE -->|Stage 4: Synthesis| SE
+    SE -->|Final Recommendation| Together
+    SE --> User
 ```
 
 **Key insight:** The parallel retrieval layer is where most of your latency budget is spent. The architecture must ensure that *all* retrieval sources are hit concurrently, not sequentially. Sequential retrieval is the most common cause of slow RAG systems.
