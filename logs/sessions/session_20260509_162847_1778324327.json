@@ -1,0 +1,27 @@
+{
+  "timestamp": "2026-05-09T16:28:47.881203",
+  "persona": {
+    "preferences": {
+      "culture": 0.8,
+      "nightlife": 0.7
+    },
+    "constraints": [],
+    "mood": "vibrant city with art and nightlife"
+  },
+  "intent_plan": {
+    "search_terms": [
+      "vibrant city",
+      "art",
+      "nightlife"
+    ],
+    "constraints": {
+      "budget": "high",
+      "climate": "hot"
+    },
+    "signal_requirements": {
+      "weather": true,
+      "events": false,
+      "flights": true
+    }
+  }
+}

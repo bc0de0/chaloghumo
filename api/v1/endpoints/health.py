@@ -1,8 +1,10 @@
 from fastapi import APIRouter
+
 from core.config import settings
 from schemas.health import HealthCheck
 
 router = APIRouter()
+
 
 @router.get("/", response_model=HealthCheck)
 async def get_health() -> HealthCheck:
@@ -17,6 +19,6 @@ async def get_health() -> HealthCheck:
             "database": "online",
             "qdrant": "online",
             "redis": "online",
-            "llm": "available"
-        }
+            "llm": "available",
+        },
     }

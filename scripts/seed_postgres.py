@@ -1,7 +1,8 @@
 import asyncio
+
 from sqlalchemy import text
+
 from core.database import SessionLocal
-import uuid
 
 # Baseline Destination Data for Sprint 4
 DESTINATIONS = [
@@ -14,7 +15,7 @@ DESTINATIONS = [
         "climate_type": "Temperate",
         "latitude": 48.8566,
         "longitude": 2.3522,
-        "tags": ["culture", "history", "romantic", "museums"]
+        "tags": ["culture", "history", "romantic", "museums"],
     },
     {
         "iata_code": "TYO",
@@ -25,7 +26,7 @@ DESTINATIONS = [
         "climate_type": "Temperate",
         "latitude": 35.6895,
         "longitude": 139.6917,
-        "tags": ["technology", "food", "urban", "clean"]
+        "tags": ["technology", "food", "urban", "clean"],
     },
     {
         "iata_code": "BKK",
@@ -36,7 +37,7 @@ DESTINATIONS = [
         "climate_type": "Tropical",
         "latitude": 13.7563,
         "longitude": 100.5018,
-        "tags": ["street_food", "nightlife", "temples", "affordable"]
+        "tags": ["street_food", "nightlife", "temples", "affordable"],
     },
     {
         "iata_code": "REK",
@@ -47,7 +48,7 @@ DESTINATIONS = [
         "climate_type": "Arctic",
         "latitude": 64.1466,
         "longitude": -21.9426,
-        "tags": ["nature", "glaciers", "adventure", "quiet"]
+        "tags": ["nature", "glaciers", "adventure", "quiet"],
     },
     {
         "iata_code": "DXB",
@@ -58,14 +59,15 @@ DESTINATIONS = [
         "climate_type": "Desert",
         "latitude": 25.2048,
         "longitude": 55.2708,
-        "tags": ["shopping", "luxury", "modern", "desert"]
-    }
+        "tags": ["shopping", "luxury", "modern", "desert"],
+    },
 ]
+
 
 async def seed_postgres():
     print("--- Starting Postgres Baseline Seeding ---")
     db = SessionLocal()
-    
+
     try:
         for dest in DESTINATIONS:
             # Idempotent Upsert logic
@@ -79,28 +81,33 @@ async def seed_postgres():
                     tags = EXCLUDED.tags,
                     updated_at = now();
             """)
-            
+
             import json
-            db.execute(query, {
-                "iata": dest["iata_code"],
-                "name": dest["name"],
-                "country": dest["country"],
-                "budget": dest["budget_level"],
-                "safety": dest["safety_index"],
-                "climate": dest["climate_type"],
-                "lat": dest["latitude"],
-                "lon": dest["longitude"],
-                "tags": json.dumps(dest["tags"])
-            })
-        
+
+            db.execute(
+                query,
+                {
+                    "iata": dest["iata_code"],
+                    "name": dest["name"],
+                    "country": dest["country"],
+                    "budget": dest["budget_level"],
+                    "safety": dest["safety_index"],
+                    "climate": dest["climate_type"],
+                    "lat": dest["latitude"],
+                    "lon": dest["longitude"],
+                    "tags": json.dumps(dest["tags"]),
+                },
+            )
+
         db.commit()
         print(f"Successfully seeded {len(DESTINATIONS)} destinations.")
-        
+
     except Exception as e:
         print(f"Seeding Error: {e}")
         db.rollback()
     finally:
         db.close()
+
 
 if __name__ == "__main__":
     asyncio.run(seed_postgres())

@@ -1,24 +1,26 @@
 import os
 import re
 import unicodedata
-from typing import Set
-from fastapi import UploadFile, HTTPException
+
+from fastapi import HTTPException, UploadFile
 
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".pdf"}
 ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "application/pdf"}
+
 
 def sanitize_filename(filename: str) -> str:
     """
     Sanitize a filename to prevent directory traversal and other attacks.
     """
     # 1. Normalize unicode
-    filename = unicodedata.normalize('NFKC', filename)
+    filename = unicodedata.normalize("NFKC", filename)
     # 2. Keep only alphanumeric, dots, and underscores
-    filename = re.sub(r'[^\w\d.\-]', '_', filename)
+    filename = re.sub(r"[^\w\d.\-]", "_", filename)
     # 3. Prevent hidden files or directory traversal
-    filename = filename.lstrip('.')
+    filename = filename.lstrip(".")
     return filename
+
 
 async def validate_upload(file: UploadFile):
     """
@@ -39,9 +41,11 @@ async def validate_upload(file: UploadFile):
     while chunk := await file.read(1024 * 100):
         size += len(chunk)
         if size > MAX_FILE_SIZE:
-            raise HTTPException(status_code=400, detail="File size exceeds limit (5MB).")
-    
+            raise HTTPException(
+                status_code=400, detail="File size exceeds limit (5MB)."
+            )
+
     # Reset file pointer for subsequent reads
     await file.seek(0)
-    
+
     return sanitize_filename(file.filename or "uploaded_file")

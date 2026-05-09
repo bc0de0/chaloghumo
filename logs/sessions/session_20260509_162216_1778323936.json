@@ -1,0 +1,27 @@
+{
+  "timestamp": "2026-05-09T16:22:16.147909",
+  "persona": {
+    "preferences": {
+      "sun": 0.9
+    },
+    "constraints": [],
+    "mood": "Beach vibe"
+  },
+  "intent_plan": {
+    "search_terms": [
+      "beach",
+      "sun",
+      "ocean"
+    ],
+    "constraints": {
+      "budget": "low",
+      "climate": "hot",
+      "weather": "true"
+    },
+    "signal_requirements": {
+      "weather": true,
+      "events": false,
+      "flights": true
+    }
+  }
+}

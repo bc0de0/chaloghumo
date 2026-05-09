@@ -1,7 +1,7 @@
-import asyncio
 import uuid
-from services.vector_store import vector_service
+
 from services.llm import intelligence_service
+from services.vector_store import vector_service
 
 MINIMAL_CITIES = [
     {
@@ -13,7 +13,7 @@ MINIMAL_CITIES = [
         "budget_level": "Luxury",
         "climate_type": "Temperate",
         "safety_index": 0.85,
-        "tags": ["museums", "architecture", "foodie", "history"]
+        "tags": ["museums", "architecture", "foodie", "history"],
     },
     {
         "name": "Bali",
@@ -24,7 +24,7 @@ MINIMAL_CITIES = [
         "budget_level": "Mid-range",
         "climate_type": "Tropical",
         "safety_index": 0.90,
-        "tags": ["beach", "surfing", "sunset", "adventure"]
+        "tags": ["beach", "surfing", "sunset", "adventure"],
     },
     {
         "name": "Tokyo",
@@ -35,9 +35,10 @@ MINIMAL_CITIES = [
         "budget_level": "Luxury",
         "climate_type": "Temperate",
         "safety_index": 0.98,
-        "tags": ["nightlife", "shopping", "food", "culture"]
-    }
+        "tags": ["nightlife", "shopping", "food", "culture"],
+    },
 ]
+
 
 async def seed_minimal_data():
     print("Starting on-the-fly seeding for in-memory DB...", flush=True)
@@ -46,22 +47,22 @@ async def seed_minimal_data():
             print(f"DEBUG: Seeding {city['name']}...", flush=True)
             city_str_id = f"{city['name']}_{city['country']}".lower()
             city_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, city_str_id))
-            
+
             try:
-                embedding = await intelligence_service.generate_embedding(city['vibe_description'])
+                embedding = await intelligence_service.generate_embedding(
+                    city["vibe_description"]
+                )
                 print(f"DEBUG: Embedding for {city['name']} generated.", flush=True)
             except Exception as e:
                 print(f"DEBUG: Embedding for {city['name']} failed: {e}", flush=True)
                 import random
+
                 embedding = [random.uniform(-1, 1) for _ in range(384)]
 
             success = await vector_service.upsert_destination(
-                destination_id=city_id,
-                vector=embedding,
-                payload=city
+                destination_id=city_id, vector=embedding, payload=city
             )
             print(f"DEBUG: Upsert for {city['name']} success: {success}", flush=True)
         print("Seeding completed successfully.", flush=True)
     except Exception as e:
         print(f"CRITICAL: Seeding failed with error: {e}", flush=True)
-

@@ -1,35 +1,43 @@
-from typing import List, Dict, Any, Optional
-import json
 import asyncio
+import json
 from functools import partial
+from typing import Any
+
 from sentence_transformers import SentenceTransformer
+
 from core.config import settings
+
 
 class IntelligenceService:
     """
     Core Intelligence Service for ChaloGhumo.
     Powered exclusively by Together AI for reasoning and SentenceTransformers for local vibes.
     """
+
     embedding_model: SentenceTransformer
-    together_client: Optional[Any] = None
+    together_client: Any | None = None
 
     def __init__(self):
         # 1. Local Embedding Engine (all-MiniLM-L6-v2)
         # Optimized for travel 'vibes' and sub-100ms latency.
-        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-        
+        self.embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+
         # 2. Together AI Client Initialization
         self._initialize_together()
 
     def _initialize_together(self):
         try:
             from together import Together
-            if settings.TOGETHER_API_KEY and settings.TOGETHER_API_KEY != "your_together_api_key_here":
+
+            if (
+                settings.TOGETHER_API_KEY
+                and settings.TOGETHER_API_KEY != "your_together_api_key_here"
+            ):
                 self.together_client = Together(api_key=settings.TOGETHER_API_KEY)
         except ImportError:
             print("Warning: 'together' library not found.")
 
-    async def generate_embedding(self, text: str) -> List[float]:
+    async def generate_embedding(self, text: str) -> list[float]:
         """
         Convert text into a 384-D vector locally.
         """
@@ -42,13 +50,13 @@ class IntelligenceService:
             return [0.0] * 384
 
     async def get_reasoning(
-        self, 
-        model: str, 
-        messages: List[Dict[str, str]], 
-        max_tokens: int = 1024, 
+        self,
+        model: str,
+        messages: list[dict[str, str]],
+        max_tokens: int = 1024,
         temperature: float = 0.7,
-        stream: bool = False
-    ) -> Optional[str]:
+        stream: bool = False,
+    ) -> str | None:
         """
         Primary inference method for Together AI models (Mixtral/Llama 3).
         """
@@ -65,10 +73,10 @@ class IntelligenceService:
                     messages=messages,
                     max_tokens=max_tokens,
                     temperature=temperature,
-                    stream=stream
-                )
+                    stream=stream,
+                ),
             )
-            
+
             if stream:
                 return response
             return response.choices[0].message.content
@@ -85,7 +93,9 @@ class IntelligenceService:
         try:
             clean_text = text.replace("```json", "").replace("```", "").strip()
             # Handle Python-style booleans if the model slips up
-            clean_text = clean_text.replace(": True", ": true").replace(": False", ": false")
+            clean_text = clean_text.replace(": True", ": true").replace(
+                ": False", ": false"
+            )
             data = json.loads(clean_text)
             return self._sanitize(data)
         except Exception as e:
@@ -107,6 +117,7 @@ class IntelligenceService:
                     return "[REDACTED]"
             return data
         return data
+
 
 # Singleton Instance
 intelligence_service = IntelligenceService()

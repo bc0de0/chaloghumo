@@ -1,6 +1,9 @@
+from uuid import UUID
+
 from sqlalchemy import text
-from typing import List, UUID
+
 from core.database import SessionLocal
+
 
 class PostgresService:
     """
@@ -8,7 +11,7 @@ class PostgresService:
     Focuses on candidate pruning based on hard constraints.
     """
 
-    async def fetch_candidate_ids(self, sql_query: str) -> List[UUID]:
+    async def fetch_candidate_ids(self, sql_query: str) -> list[UUID]:
         """
         Executes a pruned SQL query and returns a list of matching Destination IDs.
         """
@@ -26,5 +29,6 @@ class PostgresService:
         except Exception as e:
             print(f"Postgres Query Error: {e}")
             return []
+
 
 postgres_service = PostgresService()

@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.v1.api import api_router
 from core.config import settings
-
 from core.middleware import RateLimitMiddleware
 
 app = FastAPI(
@@ -29,6 +28,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.requests import Request
 
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """
@@ -40,9 +40,10 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         content={
             "error_type": "ValidationError",
             "detail": exc.errors(),
-            "message": "The request payload did not match the required schema."
+            "message": "The request payload did not match the required schema.",
         },
     )
+
 
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception):
@@ -54,11 +55,15 @@ async def generic_exception_handler(request: Request, exc: Exception):
         content={
             "error_type": "InternalServerError",
             "message": "An unexpected error occurred. Our team has been notified.",
-            "detail": str(exc) if not settings.VERSION.startswith("1") else "Hidden in production"
+            "detail": str(exc)
+            if not settings.VERSION.startswith("1")
+            else "Hidden in production",
         },
     )
 
+
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
 
 @app.get("/")
 async def root():

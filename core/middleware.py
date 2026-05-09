@@ -1,13 +1,15 @@
-from fastapi import Request, HTTPException
+from fastapi import HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware
+
 from services.signals import signal_service
-import time
+
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """
     Redis-backed rate limiting middleware to prevent API abuse.
     Focuses on protecting high-cost LLM and Vector search endpoints.
     """
+
     def __init__(self, app, limit: int = 10, window: int = 60):
         super().__init__(app)
         self.limit = limit
@@ -20,21 +22,32 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             # (request.client can be None in certain testing environments)
             client_ip = request.client.host if request.client else "127.0.0.1"
             key = f"rate_limit:{client_ip}"
-            
+
             # Use Redis to track requests
             # Note: We use the existing signal_service redis connection
             current = await signal_service.redis.get(key)
-            
+
             if current and int(current) >= self.limit:
-                raise HTTPException(status_code=429, detail="Rate limit exceeded. Please try again later.")
-            
+                raise HTTPException(
+                    status_code=429,
+                    detail="Rate limit exceeded. Please try again later.",
+                )
+
             # Basic Prompt Injection Detection
             body = await request.body()
             if body:
                 body_str = body.decode("utf-8", errors="ignore").lower()
-                injection_patterns = ["ignore all previous", "system prompt", "you are an ai", "override"]
+                injection_patterns = [
+                    "ignore all previous",
+                    "system prompt",
+                    "you are an ai",
+                    "override",
+                ]
                 if any(pattern in body_str for pattern in injection_patterns):
-                    raise HTTPException(status_code=400, detail="Potential security threat detected in input.")
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Potential security threat detected in input.",
+                    )
 
             # Increment and set expiry if new
             pipe = signal_service.redis.pipeline()
