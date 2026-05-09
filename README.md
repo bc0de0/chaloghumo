@@ -1,78 +1,85 @@
-# ChaloGhumo: Context-Aware AI Travel Intelligence
+# ChaloGhumo: The Intelligence-Driven Travel Reasoning Engine
 
-ChaloGhumo is a next-generation AI travel recommendation system designed to provide hyper-personalized, context-aware trip suggestions. By synthesizing personal preferences with real-time environmental conditions and societal constraints, ChaloGhumo ensures that users find the best possible trip for their exact situation.
+![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)
+![License](https://img.shields.io/badge/license-Proprietary-red.svg)
+![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)
 
-## 🤝 Community Project
+ChaloGhumo is a state-of-the-art **Retrieval-Augmented Generation (RAG)** system designed to redefine travel discovery. Unlike traditional booking platforms that rely on static filters, ChaloGhumo utilizes a sophisticated **Reasoning Engine** to synthesize user "moods" and "vibes" with real-time global signals—providing hyper-personalized recommendations at the speed of thought.
 
-This is a joint community project driven by the brilliant and innovative team at **[Aligned Automation](https://www.alignedautomation.com)**. We are committed to pushing the boundaries of AI-driven decision-making in the travel and hospitality sector.
+---
 
-## 🚀 The Vision
+## 🌟 The ChaloGhumo Vision: "Beyond Filtering"
 
-Our mission is to move beyond static travel filtering and toward a dynamic "Understanding Engine." We optimize for:
+Most travel platforms treat users like database administrators, forcing them to toggle rigid filters. ChaloGhumo treats users like travelers, allowing for natural language exploration of "soul-states" and "vibes."
 
-- **Personal Preferences**: Deep alignment with user desires and constraints.
-- **Environmental Conditions**: Real-time weather, temperature, and seasonal shifts.
-- **Real-World Constraints**: Crowd density, infrastructure availability, and over-tourism mitigation.
+### 🚀 Our Competitive Edge
 
-## 🛠️ Technical Stack
+* **Perceptual Immediacy**: Powered by **Together AI**, we achieve sub-2-second reasoning loops, beating legacy players by an order of magnitude.
+* **Epistemic Depth**: We don't just "guess"; we provide transparent reasoning chains that explain *why* a destination matches your specific context.
+* **Live Entropy Ingestion**: Our RAG architecture injects real-time weather, crowd density, and societal signals into every query.
 
-ChaloGhumo is built on a decoupled, high-performance backend architecture:
+---
 
-- **Core Engine**: FastAPI (Python 3.11+) with Pydantic V2 for strict schema enforcement.
-- **AI/LLM**: Gemini 1.5 Pro/Flash via Vertex AI & Google Generative AI SDKs.
-- **Vector Memory**: Qdrant for semantic contextual embeddings.
-- **Relational Store**: PostgreSQL for destination metadata and user profiles.
-- **Event Streaming**: Apache Kafka for real-time signal ingestion.
-- **Cache**: Redis for signal entropy and state management.
+## 🛠️ The Technical Stack
 
-## 📚 Documentation
+| Component | Technology | Role |
+| :--- | :--- | :--- |
+| **Logic Layer** | **FastAPI** | High-concurrency ASGI orchestrator |
+| **Reasoning** | **Together AI (Llama 3 / Mixtral)** | Ultra-low latency cognitive core |
+| **Vector Store** | **Qdrant** | High-dimensional semantic vibe memory |
+| **Relational** | **PostgreSQL** | Durable destination and user metadata |
+| **Signal Cache** | **Redis** | High-velocity signal entropy management |
+| **Analytics** | **Snowflake** | Long-term historical trend prediction |
 
-Detailed documentation is available in the `/docs` directory:
+---
 
-- [Technical Stack](./docs/tech_stack.md): Detailed architectural choices and Mermaid diagrams.
-- [System Ontology](./docs/ontology.md): Core data structures and primitives.
-- [Epistemic Foundations](./docs/epistemic_foundations.md): The philosophical and logical framework.
-- [Invariants & Entropy](./docs/invariants_and_entropy.md): Safety rules and signal decay management.
+## 📚 Deep Dive Documentation
 
-## 🏗️ Project Structure
+Explore our foundational principles and architectural blueprints:
 
-```text
-chaloghumo/
-├── api/          # API v1 routes and endpoints
-├── core/         # Settings and configuration
-├── models/       # Database models
-├── schemas/      # Pydantic schemas (Strict JSON)
-├── services/     # Core logic & Reasoning Engine
-├── tests/        # Unit and integration tests
-├── main.py       # Application entry point
-└── docker-compose.yml
-```
+* 🏗️ **[RAG Architecture](./docs/together_ai_rag_architecture.md)**: Our Together AI & Snowflake strategic roadmap.
+* 🧪 **[Epistemic Foundations](./docs/epistemic_foundations.md)**: The logic and philosophy of our reasoning engine.
+* 📐 **[Technical Stack](./docs/tech_stack.md)**: Detailed system design and component rationales.
+* 📉 **[Invariants & Entropy](./docs/invariants_and_entropy.md)**: Safety rules and signal decay strategies.
+
+---
 
 ## ⚡ Getting Started
 
 ### Prerequisites
 
-- Docker & Docker Compose
-- Google AI / Vertex AI API Key
+* Docker & Docker Compose
+* Together AI API Key
+* Python 3.11+ (for local development)
 
-### Launch with Docker
+### Launching the Stack
 
-1. Clone the repository.
-2. Create a `.env` file from `.env.example`:
+1. **Clone the repository** and navigate to the root directory.
+2. **Setup Environment**:
 
    ```bash
    cp .env.example .env
+   # Update your TOGETHER_API_KEY and database credentials
    ```
 
-3. Update your `GOOGLE_API_KEY` in the `.env` file.
-4. Launch the stack:
+3. **Run with Docker**:
 
    ```bash
    docker-compose up --build
    ```
 
-5. Access the API at `http://localhost:8000`.
-6. Interactive API docs are available at `http://localhost:8000/docs`.
+4. **Access the Engine**:
+
+   * API: `http://localhost:8000`
+   * Documentation: `http://localhost:8000/docs`
 
 ---
-*Note: This project is in its early developmental stages and will evolve rapidly.*
+
+## ⚖️ License & Ownership
+
+Conceptualized and Maintained by **Kunal Gupte and contributors**.
+
+Licensed under a **Proprietary License**. All rights reserved. See [LICENSE.md](./LICENSE.md) for full details.
+
+---
+*Note: This project is in its early developmental stages and is evolving rapidly to achieve a "no-competition" market position.*

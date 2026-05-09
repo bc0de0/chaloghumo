@@ -1,13 +1,13 @@
 # Product Owners
 
-The ChaloGhumo project is conceptualized, designed, and maintained by the following core stakeholders:
+The ChaloGhumo project is conceptualized, designed, and maintained by:
 
-## 🏢 Lead Organization
+## 🏢 Principal Owner
+- **Kunal Gupte**
 
-- **Aligned Automation** ([https://www.alignedautomation.com](https://www.alignedautomation.com))
+## 👥 Contributors
+- **Project Contributors** (Full list to be updated)
 
-## 👥 Core Product Team
+---
 
-- **The Aligned Automation AI & Travel Innovation Labs**
-
-This project is a collaborative community effort aimed at redefining travel intelligence through context-aware reasoning.
+This project is a collaborative community effort aimed at redefining travel intelligence through context-aware reasoning. All rights and intellectual property are managed by the owners listed above.
