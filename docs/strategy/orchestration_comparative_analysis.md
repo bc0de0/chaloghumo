@@ -55,6 +55,7 @@ The ChaloGhumo `ReasoningEngine` doesn't just "stuff context" into a prompt. It 
 Custom orchestration allows us to execute this complex logic with 100% transparency.
 
 ### C. Token-Level Cost Efficiency
+
 Direct integration allows us to optimize the "System Message" and "Context Window" precisely, reducing token waste that often occurs with the verbose wrappers typical of high-level frameworks.
 
 ---

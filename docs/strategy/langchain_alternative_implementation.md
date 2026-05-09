@@ -69,6 +69,7 @@ The "Sovereign" logic of ChaloGhumo (Context Fusion) is difficult to implement i
 ---
 
 ## 5. Conclusion
+
 While a LangChain implementation is technically feasible, the **~20% latency increase** and **token overhead** make it a sub-optimal choice for a high-performance travel reasoning engine. Our direct `ReasoningEngine` provides the leanest possible path from traveler mood to expert recommendation.
 
 ---
