@@ -1,0 +1,13 @@
+# Snowflake Credentials
+snowflake_account  = "xy12345.us-east-1"
+snowflake_username = "provisioner_user"
+snowflake_password = "secure_password_here"
+snowflake_role     = "ACCOUNTADMIN"
+
+# AWS Settings
+aws_region     = "us-east-1"
+s3_bucket_name = "chaloghumo-etl-raw-prod"
+
+# Infrastructure Names
+warehouse_name = "CHALOGHUMO_WH"
+database_name  = "CHALOGHUMO_DB"

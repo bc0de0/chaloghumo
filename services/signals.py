@@ -1,3 +1,4 @@
+import asyncio
 import json
 from typing import Dict, Any, Optional
 import redis.asyncio as redis
@@ -10,7 +11,7 @@ from services.external_apis.travel import travel_client
 class SignalService:
     """
     Service for retrieving and refreshing real-time Environmental and Societal signals.
-    Orchestrates ingestion from external APIs and Kafka into the Redis cache.
+    Orchestrates ingestion from external APIs into the Redis cache.
     """
 
     def __init__(self):
@@ -20,38 +21,50 @@ class SignalService:
             decode_responses=True
         )
 
-    async def get_environmental_state(self, destination_id: str) -> Optional[Dict[str, Any]]:
+    async def get_environmental_state(self, destination_id: str, lat: Optional[float] = None, lng: Optional[float] = None) -> Dict[str, Any]:
         """
-        Fetch cached weather and climate data.
+        Fetch cached weather data. If missing and coords provided, refresh.
         """
         data = await self.redis.get(f"signal:env:{destination_id}")
-        return json.loads(data) if data else None
+        if data:
+            return json.loads(data)
+        
+        if lat and lng:
+            weather_data = await weather_client.get_weather(lat, lng)
+            await self.redis.set(f"signal:env:{destination_id}", json.dumps(weather_data), ex=3600)
+            return weather_data
+            
+        return weather_client._get_stub_data()
 
-    async def get_societal_state(self, destination_id: str) -> Optional[Dict[str, Any]]:
+    async def get_societal_state(self, destination_id: str, lat: Optional[float] = None, lng: Optional[float] = None) -> Dict[str, Any]:
         """
-        Fetch cached crowd density and infrastructure availability.
+        Fetch cached societal data (Safety/Events).
         """
         data = await self.redis.get(f"signal:soc:{destination_id}")
-        return json.loads(data) if data else None
+        if data:
+            return json.loads(data)
 
-    async def get_emergency_alerts(self, destination_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Fetch high-priority emergency alerts.
-        """
-        data = await self.redis.get(f"signal:emergency:{destination_id}")
-        return json.loads(data) if data else None
+        if lat and lng:
+            await self.refresh_signals(destination_id, lat, lng)
+            new_data = await self.redis.get(f"signal:soc:{destination_id}")
+            return json.loads(new_data) if new_data else {"safety": {}, "events": [], "crowd_density": 0.5}
+
+        return {"safety": {"safety_index": 0.8}, "events": [], "crowd_density": 0.5}
 
     async def refresh_signals(self, destination_id: str, lat: float, lng: float):
         """
-        Trigger ingestion from external APIs and update Redis cache with aggressive TTLs.
+        Parallel fetch from all external APIs and update Redis.
         """
-        # 1. Fetch from Weather API
-        weather_data = await weather_client.get_weather(lat, lng)
-        await self.redis.set(f"signal:env:{destination_id}", json.dumps(weather_data), ex=3600)
+        tasks = [
+            weather_client.get_weather(lat, lng),
+            safety_client.get_safety_score(lat, lng),
+            events_client.get_nearby_events(lat, lng)
+        ]
+        
+        weather_data, safety_data, events_data = await asyncio.gather(*tasks)
 
-        # 2. Fetch from Safety and Events
-        safety_data = await safety_client.get_safety_score(lat, lng)
-        events_data = await events_client.get_nearby_events(lat, lng)
+        # Update cache
+        await self.redis.set(f"signal:env:{destination_id}", json.dumps(weather_data), ex=3600)
         
         soc_data = {
             "safety": safety_data,
@@ -64,7 +77,6 @@ class SignalService:
         """
         Check flight and hotel availability for a destination.
         """
-        # In a real app, iata would be fetched from Postgres metadata if not provided
         flights = await travel_client.get_flight_availability(iata or "Unknown")
         hotels = await travel_client.get_hotel_baseline("Unknown")
         return {

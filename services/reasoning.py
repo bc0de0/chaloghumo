@@ -1,4 +1,5 @@
-from typing import Any, List, Dict, Optional
+import asyncio
+from typing import Any, List, Dict, Optional, cast
 import json
 from schemas.persona import UserPersona
 from services.vector_store import vector_service
@@ -104,7 +105,10 @@ class ReasoningEngine:
             self._fetch_context_bundle_from_specs(query_strategy["api_specs"])
         ]
         
-        postgres_ids, qdrant_results, signal_context = await asyncio.gather(*burst_tasks)
+        results = await asyncio.gather(*burst_tasks)
+        postgres_ids = cast(List[Any], results[0])
+        qdrant_results = cast(List[Dict[str, Any]], results[1])
+        signal_context = results[2]
         
         # 4. Context Merging & Ranking
         # Filter Qdrant results by Postgres hard constraints if necessary

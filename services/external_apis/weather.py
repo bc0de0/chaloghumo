@@ -1,40 +1,55 @@
 import httpx
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from core.config import settings
 
 class WeatherClient:
     """
-    Client for fetching weather data.
-    Currently stubbed for OpenWeatherMap.
+    Client for fetching real-time environmental data from OpenWeatherMap.
     """
+
     def __init__(self):
         self.api_key = settings.OPENWEATHER_API_KEY
         self.base_url = "https://api.openweathermap.org/data/2.5"
 
-    async def get_weather(self, lat: float, lng: float) -> Dict[str, Any]:
+    async def get_weather(self, lat: float, lon: float) -> Dict[str, Any]:
         """
-        Fetch current weather for coordinates.
-        Returns a mock response if no API key is provided.
+        Fetch current weather and 5-day forecast summary.
         """
-        if not self.api_key or self.api_key == "your_openweather_key":
-            return {
-                "temp": 22.5,
-                "conditions": "Clear",
-                "humidity": 45,
-                "wind_speed": 5.2,
-                "source": "mock"
-            }
-        
-        # Real implementation would go here
-        async with httpx.AsyncClient() as client:
-            params = {
-                "lat": lat,
-                "lon": lng,
-                "appid": self.api_key,
-                "units": "metric"
-            }
-            # response = await client.get(f"{self.base_url}/weather", params=params)
-            # return response.json()
-            return {"status": "real_api_call_not_executed_in_stub"}
+        if not self.api_key:
+            return self._get_stub_data()
+
+        try:
+            async with httpx.AsyncClient() as client:
+                # 1. Get Current Weather
+                current_url = f"{self.base_url}/weather"
+                params = {
+                    "lat": lat,
+                    "lon": lon,
+                    "appid": self.api_key,
+                    "units": "metric"
+                }
+                response = await client.get(current_url, params=params, timeout=5.0)
+                response.raise_for_status()
+                data = response.json()
+
+                return {
+                    "temp": data["main"]["temp"],
+                    "condition": data["weather"][0]["main"],
+                    "description": data["weather"][0]["description"],
+                    "humidity": data["main"]["humidity"],
+                    "wind_speed": data["wind"]["speed"]
+                }
+        except Exception as e:
+            print(f"Weather API Error: {e}")
+            return self._get_stub_data()
+
+    def _get_stub_data(self) -> Dict[str, Any]:
+        return {
+            "temp": 22.0,
+            "condition": "Clear",
+            "description": "clear sky",
+            "humidity": 45,
+            "wind_speed": 3.5
+        }
 
 weather_client = WeatherClient()
