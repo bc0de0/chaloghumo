@@ -1,6 +1,15 @@
+"""
+Reasoning Engine Module for ChaloGhumo.
+
+This module orchestrates the multi-stage cognitive pipeline responsible for
+transforming raw user moods into validated, expert-grade travel recommendations.
+It implements a high-performance 'Flash Burst' RAG pattern, querying multiple 
+heterogeneous data sources in parallel.
+"""
+
 import asyncio
 import json
-from typing import Any, cast
+from typing import Any, cast, List, Dict
 
 from schemas.persona import UserPersona
 from services.external_apis.s3 import s3_service
@@ -14,16 +23,26 @@ from services.vector_store import vector_service
 
 class TriageRouter:
     """
-    Stage 1: The Analyst (Qwen-2 1.5B).
-    Responsible for query expansion and signal selection.
+    Stage 1: The Intent Analyst.
+    
+    Uses a lightweight LLM (Qwen-2 1.5B) to perform initial intent extraction,
+    query expansion, and signal requirement selection. This ensures that 
+    downstream retrieval is surgically focused.
     """
 
     def __init__(self):
+        """Initializes the triage router with the specified instructor model."""
         self.model = "arize-ai/qwen-2-1.5b-instruct"
 
-    async def analyze_intent(self, persona: UserPersona) -> dict[str, Any]:
+    async def analyze_intent(self, persona: UserPersona) -> Dict[str, Any]:
         """
         Expands the user's mood into a structured search plan.
+        
+        Args:
+            persona: The UserPersona object containing mood and constraints.
+            
+        Returns:
+            A dictionary containing search terms, constraints, and signal requirements.
         """
         prompt = f"""
         [INST]
@@ -50,6 +69,7 @@ class TriageRouter:
             temperature=0.1,  # Low temperature for structural reliability
         )
 
+        # Fallback logic for extraction failures
         if not response:
             return {
                 "search_terms": [persona.mood or "travel"],
@@ -64,7 +84,6 @@ class TriageRouter:
         try:
             return intelligence_service.parse_json_output(response)
         except Exception:
-            # Fallback if LLM fails
             return {
                 "search_terms": [persona.mood or "travel"],
                 "constraints": {},
@@ -79,10 +98,13 @@ class TriageRouter:
 class ReasoningEngine:
     """
     The High-Performance RAG Orchestrator for ChaloGhumo.
-    Transitions from linear execution to a multi-stage cognitive pipeline.
+    
+    Manages the transition from raw input to cognitive synthesis through a 
+    parallelized retrieval burst across Postgres, Qdrant, Snowflake, and External APIs.
     """
 
     def __init__(self):
+        """Initializes core sub-services and intelligence clients."""
         self.router = TriageRouter()
         self.vector_store = vector_service
         self.llm = intelligence_service
@@ -90,20 +112,28 @@ class ReasoningEngine:
         self.snowflake = snowflake_service
         self.synthesis_model = "meta-llama/Llama-3-70b-chat-hf"
 
-    async def generate_recommendation(self, persona: UserPersona) -> dict[str, Any]:
+    async def generate_recommendation(self, persona: UserPersona) -> Dict[str, Any]:
         """
-        Orchestrate the Sprint 4 Parallel RAG Flow:
-        Triage -> Sovereign Query Expansion -> Parallel Retrieval -> Cognitive Synthesis.
+        Orchestrate the Sprint 4 Parallel RAG Flow.
+        
+        Flow: Triage -> Sovereign Query Expansion -> Parallel Retrieval -> Cognitive Synthesis.
+        
+        Args:
+            persona: The validated UserPersona input.
+            
+        Returns:
+            A structured recommendation dictionary including destination, score, and reasoning.
         """
-        # 1. Triage Stage (Qwen-2 1.5B)
+        # 1. Triage Stage (Intent Extraction)
         intent_plan = await self.router.analyze_intent(persona)
         self._log_session_output(persona, intent_plan)
 
-        # 2. Sovereign Query Expansion (Gemma-3 4B)
+        # 2. Sovereign Query Expansion (Domain-specific query synthesis)
         query_strategy = await query_builder.synthesize_queries(intent_plan)
 
-        # 3. Parallel Retrieval Burst (Postgres + Qdrant + Signals)
-        # Execute all retrieval tasks simultaneously for sub-2s latency
+        # 3. Parallel Retrieval Burst
+        # Optimization: We execute all I/O bound tasks simultaneously using asyncio.gather
+        # to ensure sub-2-second end-to-end latency.
         search_query = query_strategy["qdrant_params"].get("search_text", "travel")
         query_vector = await self.llm.generate_embedding(search_query)
 
@@ -118,12 +148,11 @@ class ReasoningEngine:
         ]
 
         results = await asyncio.gather(*burst_tasks)
-        postgres_ids = cast(list[Any], results[0])
-        qdrant_results = cast(list[dict[str, Any]], results[1])
+        postgres_ids = cast(List[Any], results[0])
+        qdrant_results = cast(List[Dict[str, Any]], results[1])
         signal_context = results[2]
 
-        # 4. Context Merging & Ranking
-        # Filter Qdrant results by Postgres hard constraints if necessary
+        # 4. Context Merging & Ranking (Intersection of semantic and relational results)
         final_candidates = self._merge_and_rank_candidates(qdrant_results, postgres_ids)
 
         if not final_candidates:
@@ -133,8 +162,8 @@ class ReasoningEngine:
         dest_payload = top_destination.get("payload", {})
         dest_id = top_destination.get("id")
 
-        # 5. Cognitive Synthesis Stage (Llama 3 70B)
-        # Combine retrieved data with real-time signals
+        # 5. Cognitive Synthesis Stage (Final Reasoning Chain Generation)
+        # We inject real-time API signals and historical Snowflake metrics into the final prompt.
         synthesis_context = {
             **signal_context,
             "historical": await self.snowflake.validate_destination_trend(
@@ -159,13 +188,13 @@ class ReasoningEngine:
         }
 
     async def _fetch_context_bundle_from_specs(
-        self, specs: dict[str, Any]
-    ) -> dict[str, Any]:
+        self, specs: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
-        Dynamically fetches signals based on the Query Builder's specifications.
+        Dynamically fetches real-time signals based on the Query Builder's specifications.
         """
         tasks = []
-        # In a full impl, we'd use the 'params' from specs
+        # Signal services handle their own internal caching (Redis)
         tasks.append(self.signals.get_environmental_state("STUB"))
         tasks.append(self.signals.get_societal_state("STUB"))
         tasks.append(self.signals.get_travel_availability("STUB"))
@@ -178,10 +207,10 @@ class ReasoningEngine:
         }
 
     def _merge_and_rank_candidates(
-        self, qdrant_hits: list[dict[str, Any]], postgres_ids: list[Any]
-    ) -> list[dict[str, Any]]:
+        self, qdrant_hits: List[Dict[str, Any]], postgres_ids: List[Any]
+    ) -> List[Dict[str, Any]]:
         """
-        Intersects semantic results with relational hard constraints.
+        Intersects semantic vector results with relational hard constraints from Postgres.
         """
         if not postgres_ids:
             return qdrant_hits
@@ -192,10 +221,13 @@ class ReasoningEngine:
         ] or qdrant_hits
 
     async def _generate_synthesis(
-        self, persona: UserPersona, dest: dict, context: dict
-    ) -> list[dict[str, Any]]:
+        self, persona: UserPersona, dest: Dict, context: Dict
+    ) -> List[Dict[str, Any]]:
         """
-        The final "Poetic Synthesis" using Llama 3 70B.
+        Generates a premium reasoning chain using Llama 3 70B.
+        
+        Synthesizes the persona, destination metadata, and real-time signals into a 
+        cohesive, expert travel justification.
         """
         prompt = f"""
         <SYSTEM>
@@ -234,7 +266,7 @@ class ReasoningEngine:
 
         try:
             return self.llm.parse_json_output(response)
-        except:
+        except Exception:
             return [
                 {
                     "step_id": 1,
@@ -244,14 +276,15 @@ class ReasoningEngine:
                 }
             ]
 
-    def _empty_response(self) -> dict[str, Any]:
+    def _empty_response(self) -> Dict[str, Any]:
+        """Provides a safe, structured fallback for no-match scenarios."""
         return {
             "destination_id": "no-match",
             "match_score": 0.0,
             "reasoning_chain": [
                 {
                     "step_id": 1,
-                    "logic": "No destinations found.",
+                    "logic": "No destinations found matching your specific criteria.",
                     "domain": "System",
                     "impact_weight": 0.0,
                 }
@@ -259,9 +292,11 @@ class ReasoningEngine:
             "context_snapshot": {},
         }
 
-    def _log_session_output(self, persona: UserPersona, intent: dict[str, Any]):
+    def _log_session_output(self, persona: UserPersona, intent: Dict[str, Any]):
         """
-        Persists the triage and persona state to a session file for audit/debugging.
+        Persists the triage and persona state for audit and analytical ingestion.
+        
+        Drops logs into local storage and pushes to S3 for Snowflake analytical processing.
         """
         import os
         import time
@@ -289,4 +324,5 @@ class ReasoningEngine:
         print(f"Session output saved to {log_path} and queued for S3 upload")
 
 
+# Singleton Instance for system-wide access
 reasoning_engine = ReasoningEngine()

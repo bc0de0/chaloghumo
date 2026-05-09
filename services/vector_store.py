@@ -1,4 +1,12 @@
-from typing import Any
+"""
+Vector Store Service Module for ChaloGhumo.
+
+This module provides the semantic retrieval layer, utilizing Qdrant to perform
+high-dimensional similarity searches based on destination 'vibes'. It handles 
+collection management, schema-validated upserts, and semantic ranking.
+"""
+
+from typing import Any, Dict, List, Optional, Union
 
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
@@ -9,18 +17,24 @@ from schemas.destination import DestinationPayload
 
 class VectorService:
     """
-    Service for interacting with the Qdrant Vector Store.
-    Focuses on semantic similarity search for destination 'vibes'.
+    Semantic Data Access Layer.
+    
+    Interfaces with the Qdrant vector database to store and retrieve destinations
+    based on high-dimensional semantic embeddings (384-D).
     """
 
     def __init__(self):
+        """Initializes the Qdrant client and defines collection parameters."""
         self.client = QdrantClient(host=settings.QDRANT_HOST, port=settings.QDRANT_PORT)
         self.collection_name = "destinations"
-        self.vector_size = 384  # Matches all-MiniLM-L6-v2
+        self.vector_size = 384  # Matches 'all-MiniLM-L6-v2' output dimensions.
 
     def _ensure_collection(self):
         """
-        Ensure the Qdrant collection exists with the correct configuration.
+        Idempotent check to ensure the target collection is provisioned correctly.
+        
+        Configures Cosine Similarity and HNSW indexing for high-performance 
+        retrieval at scale.
         """
         collections = self.client.get_collections().collections
         exists = any(c.name == self.collection_name for c in collections)
@@ -37,15 +51,22 @@ class VectorService:
             )
 
     async def upsert_destination(
-        self, destination_id: str, vector: list[float], payload: dict[str, Any]
+        self, destination_id: str, vector: List[float], payload: Dict[str, Any]
     ) -> bool:
         """
-        Synchronize a destination's semantic representation with the vector store.
-        Validates the payload against the DestinationPayload schema.
+        Synchronizes a destination's semantic representation with the vector store.
+        
+        Args:
+            destination_id: Unique identifier for the destination.
+            vector: 384-D embedding vector.
+            payload: Metadata dictionary (must conform to DestinationPayload).
+            
+        Returns:
+            True if upsert was successful, False otherwise.
         """
         self._ensure_collection()
         try:
-            # Enforce schema validation
+            # Enforce schema validation before storage to prevent index pollution.
             validated_payload = DestinationPayload(**payload)
 
             self.client.upsert(
@@ -60,18 +81,25 @@ class VectorService:
             )
             return True
         except Exception as e:
-            print(f"Error upserting to Qdrant (Validation/Connection): {e}")
+            print(f"Error upserting to Qdrant: {e}")
             return False
 
     async def search_by_vibe(
         self,
-        query_vector: list[float],
+        query_vector: List[float],
         limit: int = 5,
-        filters: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
+        filters: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
         """
-        Perform a semantic similarity search based on a user's 'mood' or 'vibe'.
-        Supports pre-filtering via Qdrant payload filters.
+        Performs a semantic similarity search based on a high-dimensional query.
+        
+        Args:
+            query_vector: The embedding of the user's mood or intent.
+            limit: Maximum number of results to return.
+            filters: Optional Qdrant-native filters to apply during search.
+            
+        Returns:
+            A list of hits including IDs, semantic scores, and payloads.
         """
         self._ensure_collection()
         try:
@@ -89,9 +117,15 @@ class VectorService:
             print(f"Error searching Qdrant: {e}")
             return []
 
-    async def get_destination_vector(self, destination_id: str) -> list[float] | None:
+    async def get_destination_vector(self, destination_id: str) -> Optional[List[float]]:
         """
-        Retrieve the high-dimensional vector for a specific destination.
+        Retrieves the semantic vector for a specific destination.
+        
+        Args:
+            destination_id: Target destination ID.
+            
+        Returns:
+            The 384-D vector list, or None if not found.
         """
         try:
             result = self.client.retrieve(
@@ -102,16 +136,14 @@ class VectorService:
             if result and result[0].vector is not None:
                 vector = result[0].vector
                 if isinstance(vector, list):
-                    return vector  # type: ignore
+                    return cast(List[float], vector)
             return None
         except Exception as e:
-            print(f"Error retrieving from Qdrant: {e}")
+            print(f"Error retrieving vector from Qdrant: {e}")
             return None
 
     async def delete_destination(self, destination_id: str) -> bool:
-        """
-        Remove a destination from the vector store.
-        """
+        """Removes a destination from the vector store."""
         try:
             self.client.delete(
                 collection_name=self.collection_name,
@@ -123,4 +155,5 @@ class VectorService:
             return False
 
 
+# Singleton service instance
 vector_service = VectorService()
