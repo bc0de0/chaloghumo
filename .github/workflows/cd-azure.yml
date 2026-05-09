@@ -1,0 +1,42 @@
+name: CD - Azure Production
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Azure
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Login to Azure Container Registry
+      run: az acr login --name ${{ secrets.AZR_REGISTRY_NAME }}
+
+    - name: Build and Push to ACR
+      env:
+        REGISTRY: ${{ secrets.AZR_REGISTRY_NAME }}.azurecr.io
+        IMAGE_NAME: chaloghumo-api
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        docker build -t $REGISTRY/$IMAGE_NAME:$IMAGE_TAG -t $REGISTRY/$IMAGE_NAME:latest .
+        docker push $REGISTRY/$IMAGE_NAME:$IMAGE_TAG
+        docker push $REGISTRY/$IMAGE_NAME:latest
+
+    - name: Deploy to Azure Container Apps
+      uses: azure/container-apps-deploy-action@v1
+      with:
+        appSourcePath: ${{ github.workspace }}
+        acrName: ${{ secrets.AZR_REGISTRY_NAME }}
+        containerAppName: chaloghumo-api
+        resourceGroup: chaloghumo-prod-rg
+        imageToDeploy: ${{ secrets.AZR_REGISTRY_NAME }}.azurecr.io/chaloghumo-api:latest

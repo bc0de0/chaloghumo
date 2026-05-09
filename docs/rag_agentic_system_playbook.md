@@ -1,4 +1,5 @@
 # The RAG Agentic System Playbook
+
 ## A Generalised Guide to Conceptualising, Designing, Architecting, and Implementing Complex RAG-Based Agentic Workflows
 
 > Derived from the lived engineering experience of building ChaloGhumo — a multi-signal, multi-model travel intelligence engine — across four production sprints.
@@ -10,6 +11,7 @@
 This playbook is **sequential but not rigid**. Phases 0–3 are strictly ordered — skipping them produces systems that are technically correct but semantically incoherent. Phases 4–9 can be interleaved based on team size and risk tolerance. The document ends with a meta-section on the decisions that compound over time and are hardest to reverse.
 
 Every section distinguishes between:
+
 - **What to do** — the concrete action
 - **Why it matters** — the first-principles reasoning
 - **The trap** — what commonly goes wrong here
@@ -27,6 +29,7 @@ Before touching architecture, answer this question in writing:
 > *What is the precise nature of the "understanding" this system needs to perform, and why is a retrieval-augmented approach the right model for it?*
 
 A RAG system is appropriate when:
+
 - The answer requires combining **stable stored knowledge** (a vector/relational corpus) with **dynamic context** (signals, user state, live data)
 - The answer cannot be fully encoded in model weights because it depends on **facts that change** faster than retraining cycles
 - The answer must be **explainable** — the system must surface *why* it concluded what it did
@@ -39,23 +42,26 @@ If any of these are absent, reconsider whether RAG is the right tool.
 
 This is your system's constitution. It defines:
 
-**A. The Domain Model in Natural Language**
+#### A. The Domain Model in Natural Language
 
 Describe the "world" your system reasons over. Identify:
+
 - What are the primary *domains* of information? (e.g., in a travel system: Personal, Environmental, Societal)
 - What is the *certainty class* of each domain? (Hard facts vs. probabilistic signals vs. subjective input)
 - What are the *invariants* — rules that must never be violated regardless of model output?
 
-**B. The Reasoning Axioms**
+#### B. The Reasoning Axioms
 
 State the logical rules your system must follow. These become the guardrails for prompt engineering and the basis for fallback logic. Examples:
+
 - "A recommendation is invalid if it contradicts a hard constraint, regardless of semantic similarity score"
 - "Environmental safety signals take precedence over preference alignment"
 - "High match scores on stale data are worse than lower scores on fresh data"
 
-**C. Entropy and Decay Policy**
+#### C. Entropy and Decay Policy
 
 If your system uses real-time or time-sensitive data, define:
+
 - Which signals decay (and at what rate)
 - What action the system takes when signal confidence drops below a threshold: refresh, fuzzy-weight, or suppress
 - What constitutes a "stale" vs. "valid" system state
@@ -68,7 +74,7 @@ The ontology is the formal data model of your domain expressed as *named primiti
 
 For each entity in your system, define:
 
-```
+```yaml
 Entity: <Name>
 Fields:
   - <field_name>: <type> | <enum_values> — <description>
@@ -91,7 +97,7 @@ Draw the data flow *first*, service boundaries *second*. The shape of your archi
 
 A generalised RAG agentic data flow has this shape:
 
-```
+```text
 [User Intent / Input]
         │
         ▼
@@ -124,7 +130,7 @@ A generalised RAG agentic data flow has this shape:
 Match each domain of your ontology to the storage type that fits its access pattern:
 
 | Data Characteristic | Right Storage | Wrong Storage |
-|---|---|---|
+| ------------------- | ------------- | ------------- |
 | Stable metadata, hard constraints, relationships | Relational DB (Postgres) | Vector DB |
 | Subjective descriptions, semantic similarity queries | Vector DB (Qdrant) | Relational DB |
 | High-velocity signals, TTL-based decay | Cache (Redis) | Any persistent DB |
@@ -139,7 +145,7 @@ For a production RAG pipeline, avoid using a single large model for all tasks. T
 
 **The Multi-Model Pattern:**
 
-```
+```text
 Stage             Model Size    Characteristics Needed
 ──────────────────────────────────────────────────────
 Intent Triage     1–4B          Fast, cheap, structured JSON output
@@ -152,11 +158,13 @@ Design each model's interface as a strict structured output contract (JSON schem
 **Framework decision — direct orchestration vs. abstraction layer (LangChain, LlamaIndex, etc.):**
 
 Use a framework when:
+
 - You are prototyping and need to move fast
 - Your pipeline is a standard chain (retrieve → augment → generate) without complex branching
 - Your team lacks deep async Python expertise
 
 Use direct orchestration when:
+
 - You need sub-2s end-to-end latency (framework abstraction adds 100–400ms)
 - Your pipeline has complex parallel branches
 - You need sovereign control over every token in every prompt
@@ -173,6 +181,7 @@ Implement in this exact order. Each step validates the previous.
 ### Step 1: Implement the Relational Schema from the Ontology
 
 Translate each ontology entity directly into a SQLAlchemy model. Rules:
+
 - UUID primary keys (prevents enumeration, works across distributed inserts)
 - JSONB (not JSON) for semi-structured fields that need to be queried
 - Enums defined in Postgres (not just Python) for domain-constrained fields
@@ -190,7 +199,7 @@ Before creating the collection, decide:
 **Embedding model selection:**
 
 | Dimension | Speed | Semantic Depth | Recommendation |
-|---|---|---|---|
+| --------- | ----- | -------------- | -------------- |
 | 384 (all-MiniLM-L6-v2) | <20ms local | Sufficient for short descriptions | Default choice |
 | 768 (all-mpnet-base-v2) | ~40ms local | Better for longer, nuanced text | When query text is rich |
 | 1536 (OpenAI text-embedding-3-small) | ~150ms API | Very high | When quality > cost |
@@ -214,7 +223,7 @@ hnsw_config = HnswConfigDiff(
 
 Design your Redis key namespace before writing any code:
 
-```
+```text
 signal:{type}:{entity_id}     → cached signal data
 rate_limit:{ip}               → request counter
 session:{session_id}          → in-flight reasoning state
@@ -226,6 +235,7 @@ Assign TTLs at the key level, not as a global policy. Signal data should expire 
 ### Step 4: Seed with Intent, Not Volume
 
 The purpose of development seeding is to validate that your retrieval logic works, not to achieve statistical coverage. Seed the minimum number of records that exercise all your retrieval paths:
+
 - At least one record matching each enum value in your ontology
 - Records with edge-case field values (null optionals, max budget, extreme coordinates)
 - Records that should and should not match a given test query
@@ -273,7 +283,7 @@ This forces you to make every dependency explicit, every error case named, and e
 
 Map your services into a directed acyclic graph:
 
-```
+```text
 ReasoningEngine
     ├── TriageRouter (→ LLMService with small model)
     ├── QueryBuilder (→ LLMService with mid model)
@@ -284,6 +294,7 @@ ReasoningEngine
 ```
 
 **Rules for this graph:**
+
 - Services at the bottom of the graph (leaf nodes) should have no knowledge of services above them
 - Only the top-level orchestrator (`ReasoningEngine`) should know about all services
 - Services should never call each other laterally — all coordination flows through the orchestrator
@@ -292,12 +303,13 @@ ReasoningEngine
 
 Every LLM call in your pipeline should be treated as a typed function call:
 
-```
+```text
 Input:  { model, messages[], temperature, max_tokens }
 Output: { parsed_json | null }
 ```
 
 Build a single `IntelligenceService` wrapper that:
+
 1. Makes the API call with error handling and timeout
 2. Extracts the text content from the response object
 3. Strips markdown fences (`\`\`\`json`) that models commonly add
@@ -317,12 +329,14 @@ Never let raw model output reach your business logic. It must pass through this 
 **Model choice:** The smallest model that reliably produces valid JSON for your schema. At the time of writing, 1–4B instruction-tuned models (Qwen 1.5B, Gemma 4B, Llama 3.2 3B) are capable of this at sub-400ms latency.
 
 **Prompt discipline for structured output:**
+
 - Specify the exact JSON schema in the prompt, including field names and types
 - Give a concrete example of valid output
 - Use `temperature=0.1` — you want determinism, not creativity
 - Set a fallback in code: if the model output cannot be parsed as your schema, fall back to a default plan derived from the raw input
 
 **Output contract:**
+
 ```json
 {
     "search_terms": ["term1", "term2", "term3"],
@@ -336,17 +350,20 @@ Never let raw model output reach your business logic. It must pass through this 
 **Purpose:** Translate the triage plan into executable queries for each retrieval source.
 
 **This stage is where most teams cut corners and pay later.** Query synthesis should be its own LLM call, not embedded in the triage or synthesis prompts. This separation means:
+
 - You can optimise each prompt independently
 - You can test query quality in isolation
 - You can add a new retrieval source by adding one branch here, not by modifying the triage logic
 
 **LLM-generated SQL safety:** When using an LLM to generate SQL, always validate the output before execution:
+
 1. Parse with `sqlparse` and confirm it is a `SELECT` statement
 2. Verify the statement targets only allowed tables
 3. Check for forbidden keywords (`DROP`, `DELETE`, `UPDATE`, `--`)
 4. Execute with a read-only DB user that has no write permissions
 
 **Output contract:**
+
 ```json
 {
     "postgres_sql": "SELECT id FROM destinations WHERE region_type = 'Coastal' LIMIT 20",
@@ -387,6 +404,7 @@ The difference between sequential and parallel retrieval here is typically 1–3
 **Purpose:** Combine results from heterogeneous sources into a single ordered candidate list.
 
 **The intersection pattern:**
+
 1. Postgres gives you a set of IDs that satisfy hard constraints
 2. Qdrant gives you a ranked list of semantically similar results
 3. The merge step filters Qdrant results to only those also in the Postgres set
@@ -402,7 +420,8 @@ The difference between sequential and parallel retrieval here is typically 1–3
 **Model choice:** This is the only stage that justifies a large model (30–70B). Every other stage should be done by the cheapest model that produces reliable structured output. The synthesis model is the one that talks to the user.
 
 **Prompt structure:**
-```
+
+```text
 SYSTEM: Define the model's persona, output format, and constraints
 CONTEXT: The retrieved data (destination metadata + signals + trends)
 USER CONTEXT: The original user intent and preferences
@@ -411,6 +430,7 @@ OUTPUT FORMAT: JSON array of reasoning steps with step_id, logic, domain, impact
 ```
 
 **Reasoning chain output contract:**
+
 ```json
 [
     {
@@ -438,7 +458,7 @@ OUTPUT FORMAT: JSON array of reasoning steps with step_id, logic, domain, impact
 
 Define the minimum surface area needed. For a RAG recommendation system, the core endpoints are:
 
-```
+```text
 POST   /api/v1/{resource}/              → trigger the pipeline, return result
 GET    /api/v1/{resource}/{id}          → retrieve a specific result by ID
 GET    /api/v1/health                   → liveness + readiness check
@@ -479,6 +499,7 @@ injection_patterns = [
 Implement JWT with short-lived access tokens and long-lived refresh tokens from the start — adding auth to an existing codebase is significantly harder than building it in.
 
 Standard pattern:
+
 - Access token: 15–30 minutes, used for every API call
 - Refresh token: 7 days, stored securely, used only to get a new access token
 - Token blacklist: store revoked refresh tokens in Redis until their natural expiry
@@ -487,7 +508,7 @@ Standard pattern:
 
 Start with RBAC (roles stored in the users table) and add a policy layer for resource-level rules:
 
-```
+```text
 RBAC: user | moderator | admin → coarse-grained (which endpoints)
 Policy: owner check → fine-grained (which specific records)
 ```
@@ -507,7 +528,7 @@ Treat these as production blockers, not post-launch tasks.
 **LLM-specific threats:**
 
 | Threat | Mitigation |
-|---|---|
+| ------ | ---------- |
 | Prompt injection via user input | Sanitise all user text before embedding in prompts; detect injection patterns in middleware |
 | LLM-generated SQL injection | Validate all generated SQL against an allowlist before execution; use read-only DB user |
 | Model output exfiltration | Sanitise model outputs before returning to client; never include internal prompts in responses |
@@ -516,7 +537,7 @@ Treat these as production blockers, not post-launch tasks.
 **Infrastructure threats:**
 
 | Threat | Mitigation |
-|---|---|
+| ------ | ---------- |
 | API key exposure | Secrets manager (AWS SSM / Vault); never in code or committed env files |
 | Dependency CVEs | `pip-audit` in CI; Trivy for container images |
 | Enumeration via UUIDs | Use UUIDs as primary keys, not sequential integers |
@@ -530,7 +551,7 @@ Treat these as production blockers, not post-launch tasks.
 
 A production CI/CD pipeline for a RAG system has these stages, in order:
 
-```
+```text
 1. Quality Gate
    ├── Linting (ruff)
    ├── Type checking (mypy --strict)
@@ -582,7 +603,7 @@ CMD ["gunicorn", "main:app", "-k", "uvicorn.workers.UvicornWorker", "-w", "4"]
 Maintain three fully isolated environments backed by separate infrastructure:
 
 | Environment | Purpose | Data Policy |
-|---|---|---|
+| ----------- | ------- | ----------- |
 | `local` | Development | Seeded test data, no PII |
 | `staging` | Pre-production validation | Anonymised production copy |
 | `production` | Live system | Full data, PII-protected |
@@ -595,7 +616,7 @@ Every infrastructure resource should be defined in Terraform (or equivalent). Th
 
 Medallion architecture for your analytics warehouse:
 
-```
+```text
 Bronze (RAW)    → raw ingested events, immutable, append-only
 Silver (CLEAN)  → deduplicated, typed, enriched
 Gold (ANALYTICS)→ aggregated, business-ready, used by the reasoning engine
@@ -628,7 +649,7 @@ Every log event should be parseable as JSON and should include the `request_id` 
 
 ### 9.2 Metrics to Instrument from Day One
 
-```
+```text
 rag.pipeline.latency_ms          (breakdown by stage)
 rag.llm.call_duration_ms         (breakdown by model)
 rag.vector_search.latency_ms
@@ -642,6 +663,7 @@ Set SLA alerts on `rag.pipeline.latency_ms` P99 and `rag.pipeline.error_rate` fr
 ### 9.3 The Request ID Pattern
 
 Every request that enters your system must carry a `request_id` (UUID) that is:
+
 - Generated by the API gateway if not provided by the client
 - Attached to every log event for that request
 - Attached to every downstream service call (as an HTTP header)
@@ -698,7 +720,7 @@ The decision to use different models for different stages of the pipeline (small
 
 Derived from the ChaloGhumo sprint sequence, this is the generalised sprint cadence for a RAG agentic system:
 
-```
+```text
 Sprint 0:  Epistemic foundations, ontology, architecture design
            (no code, all documents)
 
@@ -731,7 +753,7 @@ The deliberate ordering here reflects a hard-won lesson: teams that try to optim
 These are the patterns observed most frequently in RAG system failures. Each has a preventive measure that is cheap to implement early and expensive to retrofit.
 
 | Failure Pattern | Root Cause | Prevention |
-|---|---|---|
+| --------------- | ---------- | ---------- |
 | Hallucinated recommendations | Synthesis model not grounded in retrieved context | Always pass `context_snapshot` to synthesis prompt; include retrieval confidence scores |
 | Ghost recommendations | Stale signals, no TTL enforcement | Define signal decay policy in ontology; implement TTL at Redis key level |
 | SQL injection via query builder | Unsanitised LLM-generated SQL | Validate all generated SQL before execution; use read-only DB user |

@@ -1,0 +1,48 @@
+name: CD - GCP Production
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Google Cloud
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - id: auth
+      name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+
+    - name: Configure Docker for Artifact Registry
+      run: gcloud auth configure-docker us-central1-docker.pkg.dev
+
+    - name: Build and Push to Artifact Registry
+      env:
+        IMAGE_NAME: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/chaloghumo/api
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        docker build -t $IMAGE_NAME:$IMAGE_TAG -t $IMAGE_NAME:latest .
+        docker push $IMAGE_NAME:$IMAGE_TAG
+        docker push $IMAGE_NAME:latest
+
+    - name: Deploy to Cloud Run
+      uses: google-github-actions/deploy-cloudrun@v1
+      with:
+        service: chaloghumo-api
+        image: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/chaloghumo/api:latest
+        region: us-central1
+        flags: '--allow-unauthenticated --memory=2Gi --cpu=1'
+        env_vars: |
+            PROJECT_NAME=ChaloGhumo
+            TOGETHER_API_KEY=${{ secrets.TOGETHER_API_KEY }}
+            POSTGRES_SERVER=${{ secrets.PROD_POSTGRES_SERVER }}
